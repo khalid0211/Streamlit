@@ -544,10 +544,6 @@ def ensure_db():
             st.session_state.original_filename = None
         if "file_type" not in st.session_state:
             st.session_state.file_type = None
-        if "raw_csv_df" not in st.session_state:
-            st.session_state.raw_csv_df = None
-        if "csv_filename" not in st.session_state:
-            st.session_state.csv_filename = None
         
         logger.info("Session state initialized successfully")
     except Exception as e:
@@ -671,7 +667,7 @@ def insert_project_record(project_data: Dict[str, Any], table_name: str = DEFAUL
             st.session_state.data_df = pd.DataFrame({
                 "Project ID": [], "Project": [], "Organization": [], "Project Manager": [],
                 "BAC": [], "AC": [], "Plan Start": [], "Plan Finish": [],
-                "Use_Manual_PV": [], "Manual_PV": [], "Use_Manual_EV": [], "Manual_EV": []
+                "Use_Manual_PV": [], "Manual_PV": []
             })
         
         # Get the target DataFrame
@@ -679,7 +675,7 @@ def insert_project_record(project_data: Dict[str, Any], table_name: str = DEFAUL
             existing_df = st.session_state.data_df
             # Ensure all expected columns exist
             expected_cols = ["Project ID", "Project", "Organization", "Project Manager",
-                           "BAC", "AC", "Plan Start", "Plan Finish", "Use_Manual_PV", "Manual_PV", "Use_Manual_EV", "Manual_EV"]
+                           "BAC", "AC", "Plan Start", "Plan Finish", "Use_Manual_PV", "Manual_PV"]
             for col in expected_cols:
                 if col not in existing_df.columns:
                     existing_df[col] = None
@@ -694,7 +690,7 @@ def insert_project_record(project_data: Dict[str, Any], table_name: str = DEFAUL
                 existing_df = pd.DataFrame({
                     "Project ID": [], "Project": [], "Organization": [], "Project Manager": [],
                     "BAC": [], "AC": [], "Plan Start": [], "Plan Finish": [],
-                    "Use_Manual_PV": [], "Manual_PV": [], "Use_Manual_EV": [], "Manual_EV": []
+                    "Use_Manual_PV": [], "Manual_PV": []
                 })
         
         # Check for duplicate Project ID
@@ -734,7 +730,7 @@ def update_project_record(project_id: str, project_data: Dict[str, Any], table_n
             df = st.session_state.data_df.copy()
             # Ensure all expected columns exist
             expected_cols = ["Project ID", "Project", "Organization", "Project Manager",
-                           "BAC", "AC", "Plan Start", "Plan Finish", "Use_Manual_PV", "Manual_PV", "Use_Manual_EV", "Manual_EV"]
+                           "BAC", "AC", "Plan Start", "Plan Finish", "Use_Manual_PV", "Manual_PV"]
             for col in expected_cols:
                 if col not in df.columns:
                     df[col] = None
@@ -878,9 +874,7 @@ def create_demo_data():
             "Plan Start": [],
             "Plan Finish": [],
             "Use_Manual_PV": [],
-            "Manual_PV": [],
-            "Use_Manual_EV": [],
-            "Manual_EV": []
+            "Manual_PV": []
         }
         
         demo_df = pd.DataFrame(demo_data)
@@ -1008,7 +1002,7 @@ def calculate_pv_scurve(bac, current_duration, total_duration, alpha=2.0, beta=2
         logger.error(f"S-curve PV calculation failed: {e}")
         return 0.0
 
-def calculate_evm_metrics(bac, ac, present_value, planned_value, manual_ev=None, use_manual_ev=False) -> Dict[str, float]:
+def calculate_evm_metrics(bac, ac, present_value, planned_value) -> Dict[str, float]:
     """Calculate EVM metrics with improved error handling."""
     try:
         bac = validate_numeric_input(bac, "BAC", min_val=0.0)
@@ -1016,13 +1010,8 @@ def calculate_evm_metrics(bac, ac, present_value, planned_value, manual_ev=None,
         present_value = validate_numeric_input(present_value, "Present Value", min_val=0.0)
         planned_value = validate_numeric_input(planned_value, "Planned Value", min_val=0.0)
         
-        # Use manual EV if specified, otherwise calculate automatically
-        if use_manual_ev and manual_ev is not None and is_valid_finite_number(manual_ev):
-            earned_value = float(manual_ev)
-            percent_complete = safe_divide(earned_value, bac)
-        else:
-            percent_complete = safe_divide(present_value, bac, 0.0)
-            earned_value = bac * percent_complete
+        percent_complete = safe_divide(present_value, bac, 0.0)
+        earned_value = bac * percent_complete
         cost_variance = earned_value - ac
         schedule_variance = earned_value - planned_value
         
@@ -1164,7 +1153,7 @@ def calculate_earned_schedule_metrics(earned_schedule, actual_duration, total_du
 @st.cache_data(show_spinner=False)
 def perform_complete_evm_analysis(bac, ac, plan_start, plan_finish, data_date,
                                   annual_inflation_rate, curve_type='linear', alpha=2.0, beta=2.0, 
-                                  manual_pv=None, use_manual_pv=False, manual_ev=None, use_manual_ev=False) -> Dict[str, Any]:
+                                  manual_pv=None, use_manual_pv=False) -> Dict[str, Any]:
     """Perform complete EVM analysis with comprehensive error handling."""
     try:
         actual_duration, original_duration = calculate_durations(plan_start, plan_finish, data_date)
@@ -1179,7 +1168,7 @@ def perform_complete_evm_analysis(bac, ac, plan_start, plan_finish, data_date,
             else:
                 planned_value = calculate_pv_linear(bac, actual_duration, original_duration)
         
-        evm_metrics = calculate_evm_metrics(bac, ac, present_value, planned_value, manual_ev, use_manual_ev)
+        evm_metrics = calculate_evm_metrics(bac, ac, present_value, planned_value)
         
         if curve_type.lower() == 's-curve':
             earned_schedule = find_earned_schedule_scurve(evm_metrics['earned_value'], bac, original_duration, alpha, beta)
@@ -1204,8 +1193,6 @@ def perform_complete_evm_analysis(bac, ac, plan_start, plan_finish, data_date,
             'planned_value': planned_value,
             'use_manual_pv': use_manual_pv,
             'manual_pv': manual_pv if use_manual_pv else None,
-            'use_manual_ev': use_manual_ev,
-            'manual_ev': manual_ev if use_manual_ev else None,
             **evm_metrics,
             **es_metrics
         }
@@ -1284,8 +1271,6 @@ def perform_batch_calculation(df: pd.DataFrame, column_mapping: Dict[str, str],
             pname_col = column_mapping.get('pname_col')
             org_col = column_mapping.get('org_col')
             pm_col = column_mapping.get('pm_col')
-            pv_col = column_mapping.get('pv_col')
-            ev_col = column_mapping.get('ev_col')
             
             project_name = str(row[pname_col]) if pname_col and pname_col in row.index else ""
             organization = str(row[org_col]) if org_col and org_col in row.index else ""
@@ -1300,70 +1285,15 @@ def perform_batch_calculation(df: pd.DataFrame, column_mapping: Dict[str, str],
                 project_manager = ""
             
             # Check for manual PV settings
-            use_manual_pv = False
-            manual_pv_val = None
-            
-            # First check if we have a mapped PV column
-            if pv_col and pv_col in row.index and not pd.isna(row[pv_col]):
-                try:
-                    manual_pv_val = float(row[pv_col])
-                    use_manual_pv = True
-                    # Validate: if manual_pv > bac, clamp to bac
-                    if manual_pv_val > bac:
-                        manual_pv_val = bac
-                except (ValueError, TypeError):
-                    manual_pv_val = None
-                    use_manual_pv = False
-            
-            # Then check for Use_Manual_PV and Manual_PV columns (takes precedence)
-            if 'Use_Manual_PV' in row.index:
-                use_manual_pv = bool(row.get('Use_Manual_PV', False))
-            if 'Manual_PV' in row.index and use_manual_pv:
-                try:
-                    manual_pv_val = float(row.get('Manual_PV'))
-                    # Validate: if manual_pv > bac, clamp to bac
-                    if manual_pv_val > bac:
-                        manual_pv_val = bac
-                except (ValueError, TypeError):
-                    manual_pv_val = None
-                    use_manual_pv = False
-            
-            # Check for manual EV settings
-            use_manual_ev = False
-            manual_ev_val = None
-            
-            # First check if we have a mapped EV column
-            if ev_col and ev_col in row.index and not pd.isna(row[ev_col]):
-                try:
-                    manual_ev_val = float(row[ev_col])
-                    use_manual_ev = True
-                    # Validate: if manual_ev > bac, clamp to bac
-                    if manual_ev_val > bac:
-                        manual_ev_val = bac
-                except (ValueError, TypeError):
-                    manual_ev_val = None
-                    use_manual_ev = False
-            
-            # Then check for Use_Manual_EV and Manual_EV columns (takes precedence)
-            if 'Use_Manual_EV' in row.index:
-                use_manual_ev = bool(row.get('Use_Manual_EV', False))
-            if 'Manual_EV' in row.index and use_manual_ev:
-                try:
-                    manual_ev_val = float(row.get('Manual_EV'))
-                    # Validate: if manual_ev > bac, clamp to bac
-                    if manual_ev_val > bac:
-                        manual_ev_val = bac
-                except (ValueError, TypeError):
-                    manual_ev_val = None
-                    use_manual_ev = False
+            use_manual_pv = bool(row.get('Use_Manual_PV', False)) if 'Use_Manual_PV' in row.index else False
+            manual_pv_val = row.get('Manual_PV', None) if 'Manual_PV' in row.index else None
             
             # Perform EVM analysis
             results = perform_complete_evm_analysis(
                 bac=bac, ac=ac, plan_start=plan_start, plan_finish=plan_finish,
                 data_date=data_date, annual_inflation_rate=inflation_rate/100.0,
                 curve_type=curve_type, alpha=alpha, beta=beta,
-                manual_pv=manual_pv_val, use_manual_pv=use_manual_pv,
-                manual_ev=manual_ev_val, use_manual_ev=use_manual_ev
+                manual_pv=manual_pv_val, use_manual_pv=use_manual_pv
             )
             
             # Add project info to results
@@ -1605,54 +1535,7 @@ def normalize_dataframe_columns(df: pd.DataFrame, column_mapping: Dict[str, str]
     
     # Create a copy to avoid modifying original
     normalized_df = df.copy()
-
-    # Define mandatory fields that must have values
-    # Based on user requirements: Project ID, Start Date, Finish Date, BAC, ACBAC, AC, Plan Start and Plan Finish
-    # Note: ACBAC might be same as BAC, Start/Finish Date might be same as Plan Start/Finish
-    mandatory_fields = ['pid_col', 'bac_col', 'ac_col', 'st_col', 'fn_col']
-
-    # Get the actual column names for mandatory fields
-    mandatory_columns = []
-    for field in mandatory_fields:
-        if field in column_mapping and column_mapping[field] in normalized_df.columns:
-            mandatory_columns.append(column_mapping[field])
-
-    # Track skipped rows for logging
-    skipped_rows = []
-    valid_indices = []
-
-    # Check each row for mandatory field completeness
-    for idx, row in normalized_df.iterrows():
-        has_missing_mandatory = False
-        missing_fields = []
-
-        for col in mandatory_columns:
-            value = row[col]
-            # Check if value is missing, null, or empty string
-            if pd.isna(value) or str(value).strip() == '':
-                has_missing_mandatory = True
-                missing_fields.append(col)
-
-        if has_missing_mandatory:
-            skipped_rows.append({
-                'index': idx,
-                'missing_fields': missing_fields,
-                'project_id': str(row[column_mapping.get('pid_col', '')]) if column_mapping.get('pid_col', '') in row.index else f"Row_{idx}"
-            })
-        else:
-            valid_indices.append(idx)
-
-    # Filter to keep only valid rows
-    if skipped_rows:
-        normalized_df = normalized_df.loc[valid_indices].copy()
-        logger.warning(f"Skipped {len(skipped_rows)} rows with missing mandatory fields:")
-        for skip in skipped_rows:
-            logger.warning(f"  Row {skip['index']} (Project ID: {skip['project_id']}): Missing {', '.join(skip['missing_fields'])}")
-
-    if normalized_df.empty:
-        logger.warning("All rows were skipped due to missing mandatory fields")
-        return normalized_df
-
+    
     # Rename columns based on mapping
     rename_dict = {}
     for map_key, original_col in column_mapping.items():
@@ -1664,48 +1547,6 @@ def normalize_dataframe_columns(df: pd.DataFrame, column_mapping: Dict[str, str]
     if rename_dict:
         normalized_df = normalized_df.rename(columns=rename_dict)
         logger.info(f"Normalized column names: {rename_dict}")
-    
-    # Add manual flag columns for PV and EV if mapped columns contain non-zero data
-    pv_col = column_mapping.get('pv_col')
-    ev_col = column_mapping.get('ev_col')
-    
-    # Initialize manual flag columns if they don't exist
-    if 'Use_Manual_PV' not in normalized_df.columns:
-        normalized_df['Use_Manual_PV'] = False
-    if 'Manual_PV' not in normalized_df.columns:
-        normalized_df['Manual_PV'] = None
-    if 'Use_Manual_EV' not in normalized_df.columns:
-        normalized_df['Use_Manual_EV'] = False
-    if 'Manual_EV' not in normalized_df.columns:
-        normalized_df['Manual_EV'] = None
-    
-    # Process Manual PV from mapped column
-    if pv_col and pv_col in normalized_df.columns:
-        for idx, row in normalized_df.iterrows():
-            pv_value = row[pv_col]
-            if pd.notna(pv_value) and pv_value != 0:
-                try:
-                    pv_float = float(pv_value)
-                    if pv_float > 0:
-                        normalized_df.at[idx, 'Use_Manual_PV'] = True
-                        normalized_df.at[idx, 'Manual_PV'] = pv_float
-                        logger.info(f"Set Manual PV for row {idx}: {pv_float}")
-                except (ValueError, TypeError):
-                    pass  # Skip invalid values
-    
-    # Process Manual EV from mapped column
-    if ev_col and ev_col in normalized_df.columns:
-        for idx, row in normalized_df.iterrows():
-            ev_value = row[ev_col]
-            if pd.notna(ev_value) and ev_value != 0:
-                try:
-                    ev_float = float(ev_value)
-                    if ev_float > 0:
-                        normalized_df.at[idx, 'Use_Manual_EV'] = True
-                        normalized_df.at[idx, 'Manual_EV'] = ev_float
-                        logger.info(f"Set Manual EV for row {idx}: {ev_float}")
-                except (ValueError, TypeError):
-                    pass  # Skip invalid values
     
     return normalized_df
 
@@ -1768,15 +1609,21 @@ def render_data_source_section():
                     else:
                         st.warning("⚠️ No project data found in JSON file")
                         
-                else:  # CSV reading (headers only)
+                else:  # CSV processing
                     df, filename = load_csv_file(uploaded_file)
-                    st.success(f"✅ CSV file read: {filename}")
-                    st.info("📋 Please configure column mapping below, then click 'Load CSV Data' to import")
+                    st.success(f"✅ CSV loaded: {filename}")
                     
-                    # Store raw CSV data for mapping, but don't process yet
-                    st.session_state.raw_csv_df = df
-                    st.session_state.csv_filename = filename
+                    st.session_state.data_df = df
+                    st.session_state.data_loaded = True
+                    st.session_state.original_filename = filename
                     st.session_state.file_type = 'csv'
+                    st.session_state.config_dict.update({
+                        "import_metadata": {
+                            "import_date": datetime.now().isoformat(),
+                            "source": "csv_import",
+                            "original_filename": filename
+                        }
+                    })
                 
                 # After successful processing, store the file's info
                 st.session_state.processed_file_info = current_file_info
@@ -1790,13 +1637,14 @@ def render_data_source_section():
                 if 'processed_file_info' in st.session_state:
                     del st.session_state['processed_file_info']
 
-    # Handle CSV column mapping workflow
-    if hasattr(st.session_state, 'raw_csv_df') and st.session_state.raw_csv_df is not None:
-        df = st.session_state.raw_csv_df
-        
+    # Use data from session state if available
+    if st.session_state.data_df is not None and not st.session_state.data_df.empty:
+        df = st.session_state.data_df
+        selected_table = DEFAULT_DATASET_TABLE
+
         with st.expander("📊 Data Preview", expanded=False):
             st.dataframe(df.head(10), use_container_width=True)
-            st.caption(f"{len(df)} rows available for mapping.")
+            st.caption(f"{len(df)} rows loaded.")
             
         # Get stored column mappings from session state
         stored_mappings = st.session_state.config_dict.get('column_mappings', {})
@@ -1807,67 +1655,11 @@ def render_data_source_section():
             st.session_state.config_dict['column_mappings'] = {}
         st.session_state.config_dict['column_mappings'] = column_mapping
         
-        # Load CSV Data button
-        if st.button("📥 Load CSV Data", type="primary", help="Apply column mapping and import CSV data"):
-            try:
-                # Validate required mappings
-                required_keys = ['pid_col', 'bac_col', 'ac_col', 'st_col', 'fn_col']
-                missing_mappings = [key.replace('_col', '').upper() for key in required_keys if not column_mapping.get(key)]
-                
-                if missing_mappings:
-                    st.error(f"Please map required columns: {', '.join(missing_mappings)}")
-                else:
-                    # Apply normalization and import
-                    normalized_df = normalize_dataframe_columns(df, column_mapping)
-
-                    # Update column mapping to use normalized column names
-                    normalized_column_mapping = {
-                        'pid_col': 'Project ID',
-                        'pname_col': 'Project',
-                        'org_col': 'Organization',
-                        'pm_col': 'Project Manager',
-                        'bac_col': 'BAC',
-                        'ac_col': 'AC',
-                        'st_col': 'Plan Start',
-                        'fn_col': 'Plan Finish'
-                    }
-
-                    st.session_state.data_df = normalized_df
-                    st.session_state.data_loaded = True
-                    st.session_state.original_filename = st.session_state.csv_filename
-                    st.session_state.file_type = "csv"
-                    st.session_state.config_dict.update({
-                        "import_metadata": {
-                            "import_date": datetime.now().isoformat(),
-                            "source": "csv_import",
-                            "original_filename": st.session_state.csv_filename
-                        },
-                        "column_mappings": normalized_column_mapping
-                    })
-                    
-                    # Clear raw CSV data
-                    st.session_state.raw_csv_df = None
-                    st.session_state.csv_filename = None
-                    
-                    st.success(f"✅ CSV data imported successfully!")
-                    st.cache_data.clear()
-                    st.rerun()
-                    
-            except Exception as e:
-                st.error(f"Failed to import CSV: {e}")
-    
-    # Use processed data from session state if available
-    elif st.session_state.data_df is not None and not st.session_state.data_df.empty:
-        df = st.session_state.data_df
-        selected_table = DEFAULT_DATASET_TABLE
-
-        with st.expander("📊 Data Preview", expanded=False):
-            st.dataframe(df.head(10), use_container_width=True)
-            st.caption(f"{len(df)} rows loaded.")
-            
-        # Get stored column mappings from session state (for display only)
-        stored_mappings = st.session_state.config_dict.get('column_mappings', {})
-        column_mapping = stored_mappings  # Don't re-render mapping for processed data
+        # Normalize DataFrame for manual entry compatibility
+        if column_mapping:
+            normalized_df = normalize_dataframe_columns(df, column_mapping)
+            if st.session_state.data_df is not None:
+                st.session_state.data_df = normalized_df
 
     st.markdown('</div>', unsafe_allow_html=True)
     return df, selected_table, column_mapping
@@ -1967,24 +1759,8 @@ def render_column_mapping_section(columns: List[str], stored_mapping: Dict = Non
         key="map_pm"
     )
     
-    mapping['pv_col'] = st.selectbox(
-        "Manual PV",
-        optional_cols,
-        index=optional_cols.index(stored_mapping.get('pv_col', none_option))
-        if stored_mapping.get('pv_col') in optional_cols else 0,
-        key="map_pv"
-    )
-    
-    mapping['ev_col'] = st.selectbox(
-        "Manual EV",
-        optional_cols,
-        index=optional_cols.index(stored_mapping.get('ev_col', none_option))
-        if stored_mapping.get('ev_col') in optional_cols else 0,
-        key="map_ev"
-    )
-    
     # Clean up None values
-    for key in ['pname_col', 'org_col', 'pm_col', 'pv_col', 'ev_col']:
+    for key in ['pname_col', 'org_col', 'pm_col']:
         if mapping[key] == none_option:
             mapping[key] = None
     
@@ -2041,18 +1817,8 @@ def render_manual_entry_section(selected_table: str):
         manual_pv = None
         if use_manual_pv:
             manual_pv = st.number_input("💹 **Planned Value (PV)** (Manual)",
-                                      min_value=0.0, max_value=new_bac, value=0.0, key="add_manual_pv",
+                                      min_value=0.0, value=0.0, key="add_manual_pv",
                                       help="Manual Planned Value - will override automatic PV calculation")
-
-        st.markdown("**Earned Value (EV) Configuration**")
-        use_manual_ev = st.checkbox("📈 Enter Earned Value Manually", key="add_use_manual_ev",
-                                   help="Check this to enter EV manually instead of automatic calculation")
-
-        manual_ev = None
-        if use_manual_ev:
-            manual_ev = st.number_input("💰 **Earned Value (EV)** (Manual)",
-                                      min_value=0.0, max_value=new_bac, value=0.0, key="add_manual_ev",
-                                      help="Manual Earned Value - will override automatic EV calculation")
 
         st.markdown("_Optional Information:_")
         new_org = st.text_input("🏢 Organization", key="add_org", max_chars=200,
@@ -2077,14 +1843,23 @@ def render_manual_entry_section(selected_table: str):
                         "Plan Start": new_start.strftime("%Y-%m-%d"),
                         "Plan Finish": new_finish.strftime("%Y-%m-%d"),
                         "Use_Manual_PV": use_manual_pv,
-                        "Manual_PV": manual_pv if use_manual_pv else None,
-                        "Use_Manual_EV": use_manual_ev,
-                        "Manual_EV": manual_ev if use_manual_ev else None
+                        "Manual_PV": manual_pv if use_manual_pv else None
                     }
                     insert_project_record(project_data, DEFAULT_DATASET_TABLE)
                     st.success(f"✅ Project '{new_pid}' added successfully!")
-                    
-                    # Clear cache and rerun to refresh the form
+
+                    # Manually clear form fields by resetting session state keys
+                    keys_to_clear = ["add_pid", "add_pname", "add_org", "add_pm"]
+                    for key in keys_to_clear:
+                        if key in st.session_state:
+                            st.session_state[key] = ""
+                    st.session_state.add_bac = 1000000.0
+                    st.session_state.add_ac = 0.0
+                    st.session_state.add_start = date.today()
+                    st.session_state.add_finish = date.today() + timedelta(days=365)
+                    st.session_state.add_use_manual_pv = False
+                    st.session_state.add_manual_pv = 0.0
+
                     st.cache_data.clear()
                     st.rerun()
                 except Exception as e:
@@ -2135,22 +1910,8 @@ def render_manual_entry_section(selected_table: str):
             edit_manual_pv = None
             if edit_use_manual_pv:
                 edit_manual_pv = st.number_input("💹 **Planned Value (PV)** (Manual)", 
-                                                min_value=0.0, max_value=edit_bac, value=current_manual_pv, key="edit_manual_pv",
+                                                min_value=0.0, value=current_manual_pv, key="edit_manual_pv",
                                                 help="Manual Planned Value - will override automatic PV calculation")
-            
-            st.markdown("**Earned Value (EV) Configuration**")
-            current_use_manual_ev = bool(project.get("Use_Manual_EV", False))
-            current_manual_ev = float(project.get("Manual_EV", 0)) if project.get("Manual_EV") else 0.0
-            
-            edit_use_manual_ev = st.checkbox("📈 Enter Earned Value Manually", 
-                                           value=current_use_manual_ev, key="edit_use_manual_ev",
-                                           help="Check this to enter EV manually instead of automatic calculation")
-            
-            edit_manual_ev = None
-            if edit_use_manual_ev:
-                edit_manual_ev = st.number_input("💰 **Earned Value (EV)** (Manual)", 
-                                                min_value=0.0, max_value=edit_bac, value=current_manual_ev, key="edit_manual_ev",
-                                                help="Manual Earned Value - will override automatic EV calculation")
             
             if st.button("💾 Update Project", type="primary", key="update_project_btn"):
                 if edit_finish <= edit_start:
@@ -2166,9 +1927,7 @@ def render_manual_entry_section(selected_table: str):
                             "Plan Start": edit_start.strftime("%Y-%m-%d"),
                             "Plan Finish": edit_finish.strftime("%Y-%m-%d"),
                             "Use_Manual_PV": edit_use_manual_pv,
-                            "Manual_PV": edit_manual_pv if edit_use_manual_pv else None,
-                            "Use_Manual_EV": edit_use_manual_ev,
-                            "Manual_EV": edit_manual_ev if edit_use_manual_ev else None
+                            "Manual_PV": edit_manual_pv if edit_use_manual_pv else None
                         }
                         update_project_record(edit_pid, updated_data, DEFAULT_DATASET_TABLE)
                         st.success(f"✅ Project '{edit_pid}' updated successfully!")
@@ -2658,14 +2417,10 @@ def render_enhanced_inputs_tab(project_data: Dict, results: Dict, controls: Dict
     col3, col4 = st.columns(2)
     with col3:
         pv_formatted = format_currency(results['planned_value'], controls['currency_symbol'], controls['currency_postfix'])
-        use_manual_pv = results.get('use_manual_pv', False)
-        pv_label = f"📊 **Planned Value (PV{'**' if not use_manual_pv else ''})**"
-        st.markdown(f'<div class="financial-metric">{pv_label}<br><span class="financial-value">{pv_formatted}</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="financial-metric">📊 **Planned Value (PV)**<br><span class="financial-value">{pv_formatted}</span></div>', unsafe_allow_html=True)
     with col4:
         ev_formatted = format_currency(results['earned_value'], controls['currency_symbol'], controls['currency_postfix'])
-        use_manual_ev = results.get('use_manual_ev', False)
-        ev_label = f"💎 **Earned Value (EV{'**' if not use_manual_ev else ''})**"
-        st.markdown(f'<div class="financial-metric">{ev_label}<br><span class="financial-value">{ev_formatted}</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="financial-metric">💎 **Earned Value (EV)**<br><span class="financial-value">{ev_formatted}</span></div>', unsafe_allow_html=True)
     
     # Performance Indicators - Multi-row layout
     st.markdown("#### Performance Indicators")
@@ -2714,10 +2469,6 @@ def build_enhanced_results_table(results: dict, controls: dict, project_data: di
     currency = controls['currency_symbol']
     postfix = controls['currency_postfix']
     
-    # Check if manual EV and PV are used
-    use_manual_ev = results.get('use_manual_ev', False)
-    use_manual_pv = results.get('use_manual_pv', False)
-    
     # Helper function for currency formatting
     def fmt_curr(amount):
         if amount is None or not is_valid_finite_number(amount):
@@ -2755,8 +2506,8 @@ def build_enhanced_results_table(results: dict, controls: dict, project_data: di
         ("💰 FINANCIAL OVERVIEW", "", "", ""),
         ("Budget at Completion (BAC)", "Total planned budget", fmt_curr(bac), ""),
         ("Actual Cost (AC)", "Total spent to date", fmt_curr(ac), ""),
-        (f"Planned Value (PV{'**' if not use_manual_pv else ''})", "Value of work planned", fmt_curr(pv), ""),
-        (f"Earned Value (EV{'**' if not use_manual_ev else ''})", "Value of work completed", fmt_curr(ev), ""),
+        ("Planned Value (PV)", "Value of work planned", fmt_curr(pv), ""),
+        ("Earned Value (EV)", "Value of work completed", fmt_curr(ev), ""),
         ("", "", "", ""),  # Spacer
         
         # Performance Metrics
@@ -2905,29 +2656,16 @@ def main():
             st.markdown("### 🔄 Batch Calculation Mode")
             
             if st.button("🚀 Run Batch EVM Calculation", type="primary"):
-                # For demo data or processed CSV data, use standard column mapping since it's already in correct format
-                if st.session_state.get('file_type') in ['demo', 'csv']:
-                    column_mapping = {
-                        'pid_col': 'Project ID',
-                        'pname_col': 'Project',
-                        'org_col': 'Organization',
-                        'pm_col': 'Project Manager',
-                        'bac_col': 'BAC',
-                        'ac_col': 'AC',
-                        'st_col': 'Plan Start',
-                        'fn_col': 'Plan Finish'
-                    }
-
                 # Validate required column mappings exist
                 required_keys = ['pid_col', 'bac_col', 'ac_col', 'st_col', 'fn_col']
                 missing_mappings = []
-
+                
                 for key in required_keys:
                     if not column_mapping.get(key):
                         missing_mappings.append(key.replace('_col', '').upper())
                     elif column_mapping[key] not in display_df.columns:
                         missing_mappings.append(f"{key.replace('_col', '').upper()} (column '{column_mapping[key]}' not found)")
-
+                
                 if missing_mappings:
                     st.error(f"Missing required column mappings: {', '.join(missing_mappings)}")
                 else:
@@ -3131,42 +2869,22 @@ def main():
                 st.download_button("📥 Download Batch Results", csv_data, file_name="batch_evm_results.csv", mime="text/csv", type="primary")
             return
         
-        # For demo data or processed CSV data, use standard column mapping since it's already in correct format
-        if st.session_state.get('file_type') in ['demo', 'csv']:
-            column_mapping = {
-                'pid_col': 'Project ID',
-                'pname_col': 'Project',
-                'org_col': 'Organization',
-                'pm_col': 'Project Manager',
-                'bac_col': 'BAC',
-                'ac_col': 'AC',
-                'st_col': 'Plan Start',
-                'fn_col': 'Plan Finish'
-            }
-        elif not all(column_mapping.get(key) for key in ['pid_col', 'bac_col', 'ac_col', 'st_col', 'fn_col']):
+        if not all(column_mapping.get(key) for key in ['pid_col', 'bac_col', 'ac_col', 'st_col', 'fn_col']):
             st.warning("⚠️ Please complete the column mapping in the sidebar first.")
             return
-
+        
         try:
             pid_col = column_mapping['pid_col']
             pname_col = column_mapping.get('pname_col')
-
-            # Debug information
-            if pid_col not in display_df.columns:
-                st.error(f"Column '{pid_col}' not found in data. Available columns: {list(display_df.columns)}")
-                return
-
             project_ids = display_df[pid_col].astype(str).tolist()
-            project_names = display_df[pname_col].astype(str).fillna("").tolist() if pname_col and pname_col in display_df.columns else [""] * len(project_ids)
+            project_names = display_df[pname_col].astype(str).fillna("").tolist() if pname_col else [""] * len(project_ids)
             display_options = [f"{pid} — {pname}" if pname and pname != "nan" else pid for pid, pname in zip(project_ids, project_names)]
-
+            
             selected_idx = st.selectbox("Select Project for Analysis", range(len(display_options)), format_func=lambda i: display_options[i])
             selected_project_id = project_ids[selected_idx]
-
+            
         except Exception as e:
             st.error(f"Error processing project list: {e}")
-            st.error(f"Available columns: {list(display_df.columns) if 'display_df' in locals() else 'DataFrame not available'}")
-            st.error(f"Column mapping: {column_mapping}")
             return
         
         project_row = display_df[display_df[pid_col].astype(str) == selected_project_id].iloc[0]
@@ -3190,15 +2908,12 @@ def main():
             with st.spinner("Calculating EVM metrics..."):
                 use_manual_pv = bool(project_row.get('Use_Manual_PV', False))
                 manual_pv_val = project_row.get('Manual_PV')
-                use_manual_ev = bool(project_row.get('Use_Manual_EV', False))
-                manual_ev_val = project_row.get('Manual_EV')
                 results = perform_complete_evm_analysis(
                     bac=project_data['bac'], ac=project_data['ac'],
                     plan_start=project_data['plan_start'], plan_finish=project_data['plan_finish'],
                     data_date=controls['data_date'], annual_inflation_rate=controls['inflation_rate'] / 100.0,
                     curve_type=controls['curve_type'], alpha=controls['alpha'], beta=controls['beta'],
-                    manual_pv=manual_pv_val, use_manual_pv=use_manual_pv,
-                    manual_ev=manual_ev_val, use_manual_ev=use_manual_ev
+                    manual_pv=manual_pv_val, use_manual_pv=use_manual_pv
                 )
             
             col1, col2, col3 = st.columns(3)
@@ -3251,8 +2966,8 @@ def main():
                 FINANCIALS:
                 - Budget (BAC): {format_currency(results['bac'], controls['currency_symbol'], controls['currency_postfix'])}
                 - Actual Cost (AC): {format_currency(results['ac'], controls['currency_symbol'], controls['currency_postfix'])}
-                - Earned Value (EV{'**' if not results.get('use_manual_ev', False) else ''}): {format_currency(results['earned_value'], controls['currency_symbol'], controls['currency_postfix'])}
-                - Planned Value (PV{'**' if not results.get('use_manual_pv', False) else ''}): {format_currency(results['planned_value'], controls['currency_symbol'], controls['currency_postfix'])}
+                - Earned Value (EV): {format_currency(results['earned_value'], controls['currency_symbol'], controls['currency_postfix'])}
+                - Planned Value (PV): {format_currency(results['planned_value'], controls['currency_symbol'], controls['currency_postfix'])}
 
                 SCHEDULE:
                 - Plan Start: {results['plan_start']}
@@ -3364,144 +3079,66 @@ def main():
             
             with tab4:
                 st.markdown("### 📈 Performance Visualization")
-                
                 try:
-                    # Create comprehensive charts
                     fig = plt.figure(figsize=(20, 16))
+                    plt.style.use('seaborn-v0_8-whitegrid')
                     
-                    # Professional styling
-                    plt.style.use('seaborn-v0_8' if 'seaborn-v0_8' in plt.style.available else 'default')
-                    
-                    # Chart 1: Performance Matrix (CPI vs SPI)
-                    ax1 = plt.subplot(2, 3, 1)
+                    # Performance Matrix
+                    ax1 = plt.subplot(2, 2, 1)
                     cpi, spi = results['cost_performance_index'], results['schedule_performance_index']
-                    
-                    # Performance quadrants background - proper rectangular fills
-                    # Q1: SPI>=1, CPI>=1 (top right) - Green
-                    ax1.fill([1.0, 1.5, 1.5, 1.0], [1.0, 1.0, 1.5, 1.5], alpha=0.2, color='green', label='Good Performance')
-                    # Q2: SPI<1, CPI>=1 (top left) - Yellow  
-                    ax1.fill([0.5, 1.0, 1.0, 0.5], [1.0, 1.0, 1.5, 1.5], alpha=0.2, color='yellow', label='Mixed Performance')
-                    # Q3: SPI<1, CPI<1 (bottom left) - Red
-                    ax1.fill([0.5, 1.0, 1.0, 0.5], [0.5, 0.5, 1.0, 1.0], alpha=0.2, color='red', label='Poor Performance')
-                    # Q4: SPI>=1, CPI<1 (bottom right) - Yellow
+                    ax1.fill([1.0, 1.5, 1.5, 1.0], [1.0, 1.0, 1.5, 1.5], alpha=0.2, color='green')
+                    ax1.fill([0.5, 1.0, 1.0, 0.5], [1.0, 1.0, 1.5, 1.5], alpha=0.2, color='yellow')
+                    ax1.fill([0.5, 1.0, 1.0, 0.5], [0.5, 0.5, 1.0, 1.0], alpha=0.2, color='red')
                     ax1.fill([1.0, 1.5, 1.5, 1.0], [0.5, 0.5, 1.0, 1.0], alpha=0.2, color='yellow')
-                    
-                    # Plot project point
                     color = 'green' if (cpi >= 1.0 and spi >= 1.0) else 'orange' if (cpi >= 0.9 or spi >= 0.9) else 'red'
                     ax1.scatter([spi], [cpi], s=150, c=color, alpha=0.8, edgecolors='black', linewidth=2)
-                    
                     ax1.axhline(1.0, color='gray', linestyle='--', alpha=0.7)
                     ax1.axvline(1.0, color='gray', linestyle='--', alpha=0.7)
-                    ax1.set_xlim(0.5, 1.5)
-                    ax1.set_ylim(0.5, 1.5)
-                    ax1.set_xlabel('Schedule Performance Index (SPI)')
-                    ax1.set_ylabel('Cost Performance Index (CPI)')
+                    ax1.set_xlim(0.5, 1.5); ax1.set_ylim(0.5, 1.5)
+                    ax1.set_xlabel('Schedule Performance Index (SPI)'); ax1.set_ylabel('Cost Performance Index (CPI)')
                     ax1.set_title('Performance Matrix', fontweight='bold')
-                    ax1.grid(True, alpha=0.3)
                     
-                    # Chart 2: Progress Comparison
-                    ax2 = plt.subplot(2, 3, 2)
+                    # Progress Comparison
+                    ax2 = plt.subplot(2, 2, 2)
                     metrics = ['Budget Used', 'Time Used', 'Work Complete']
                     values = [
                         safe_divide(results['ac'], results['bac']) * 100,
                         safe_divide(results['actual_duration_months'], results['original_duration_months']) * 100,
                         results['percent_complete']
                     ]
-                    colors = ['#ff6b6b', '#4ecdc4', '#45b7d1']
-                    
-                    bars = ax2.barh(metrics, values, color=colors, alpha=0.8)
+                    bars = ax2.barh(metrics, values, color=['#ff6b6b', '#4ecdc4', '#45b7d1'], alpha=0.8)
                     ax2.axvline(100, color='gray', linestyle='--', alpha=0.7)
-                    ax2.set_xlim(0, max(120, max(values) + 10))
-                    ax2.set_xlabel('Percentage (%)')
+                    ax2.set_xlim(0, max(120, max(values) + 10)); ax2.set_xlabel('Percentage (%)')
                     ax2.set_title('Progress Comparison', fontweight='bold')
-                    
-                    # Add value labels
                     for bar, value in zip(bars, values):
-                        ax2.text(value + 2, bar.get_y() + bar.get_height()/2, 
-                                f'{value:.1f}%', va='center', fontweight='bold')
-                    
-                    # Chart 3: Time/Budget Performance Curve
-                    ax3 = plt.subplot(2, 3, 3)
-                    
-                    # Calculate normalized time and earned value
-                    normalized_time = safe_divide(results['actual_duration_months'], results['original_duration_months'])
-                    normalized_ev = safe_divide(results['earned_value'], results['bac'])
-                    normalized_data_date = normalized_time
-                    
-                    # Create normalized time array from 0 to 1
-                    T = np.linspace(0, 1, 101)
-                    
-                    # Define the performance curves
-                    blue_curve = -0.794*T**3 + 0.632*T**2 + 1.162*T
-                    red_curve = -0.387*T**3 + 1.442*T**2 - 0.055*T
-                    
-                    # Plot the curves
-                    ax3.plot(T, blue_curve, 'b-', linewidth=2, label='Blue Curve', alpha=0.8)
-                    ax3.plot(T, red_curve, 'r-', linewidth=2, label='Red Curve', alpha=0.8)
-                    
-                    # Add vertical line at normalized Data Date
-                    ax3.axvline(normalized_data_date, color='yellow', linestyle='--', alpha=0.8, 
-                               linewidth=2, label='Data Date')
-                    
-                    # Add red point at (normalized Data Date, normalized EV)
-                    ax3.scatter([normalized_data_date], [normalized_ev], color='red', s=100, 
-                              alpha=0.8, edgecolors='black', linewidth=2, label='Current EV')
-                    
-                    ax3.set_xlim(0, 1)
-                    ax3.set_ylim(0, 1.2)
-                    ax3.set_xlabel('Time (Normalized)')
-                    ax3.set_ylabel('PV (Normalized)')
-                    ax3.set_title('Time/Budget Performance Curve', fontweight='bold')
-                    ax3.legend(loc='upper left')
-                    ax3.grid(True, alpha=0.3)
-                    
-                    # Chart 4: EVM Curves
-                    ax4 = plt.subplot(2, 3, (4, 6))
-                    
-                    # Create timeline
+                        ax2.text(value + 2, bar.get_y() + bar.get_height()/2, f'{value:.1f}%', va='center', fontweight='bold')
+
+                    # EVM Curves
+                    ax3 = plt.subplot(2, 1, 2)
                     total_months = results['original_duration_months']
                     actual_months = results['actual_duration_months']
+                    timeline = np.linspace(0, total_months, 100)
+                    actual_timeline = np.linspace(0, actual_months, 100) if actual_months > 0 else [0]
                     
-                    timeline = np.linspace(0, total_months, int(total_months * 2) + 1)
-                    actual_timeline = np.linspace(0, actual_months, int(actual_months * 2) + 1) if actual_months > 0 else [0]
-                    
-                    # Calculate curves
                     if controls['curve_type'] == 's-curve':
                         pv_values = [calculate_pv_scurve(results['bac'], t, total_months, controls['alpha'], controls['beta']) for t in timeline]
-                        if actual_months > 0:
-                            ac_values = [calculate_pv_scurve(results['ac'], t, actual_months, controls['alpha'], controls['beta']) for t in actual_timeline]
-                            ev_values = [calculate_pv_scurve(results['earned_value'], t, actual_months, controls['alpha'], controls['beta']) for t in actual_timeline]
-                        else:
-                            ac_values, ev_values = [0], [0]
                     else:
                         pv_values = [calculate_pv_linear(results['bac'], t, total_months) for t in timeline]
-                        if actual_months > 0:
-                            ac_values = [calculate_pv_linear(results['ac'], t, actual_months) for t in actual_timeline]
-                            ev_values = [calculate_pv_linear(results['earned_value'], t, actual_months) for t in actual_timeline]
-                        else:
-                            ac_values, ev_values = [0], [0]
                     
-                    # Plot curves
-                    ax4.plot(timeline, pv_values, 'b-', linewidth=3, label='Planned Value (PV)', alpha=0.8)
-                    ax4.plot(actual_timeline, ac_values, 'r-', linewidth=3, label='Actual Cost (AC)', alpha=0.8)
-                    ax4.plot(actual_timeline, ev_values, 'g-', linewidth=3, label='Earned Value (EV)', alpha=0.8)
+                    ax3.plot(timeline, pv_values, 'b-', linewidth=2, label='Planned Value (PV)')
+                    if actual_months > 0:
+                        ax3.plot(actual_timeline, np.linspace(0, results['ac'], 100), 'r-', linewidth=2, label='Actual Cost (AC)')
+                        ax3.plot(actual_timeline, np.linspace(0, results['earned_value'], 100), 'g-', linewidth=2, label='Earned Value (EV)')
                     
-                    # Data date line
-                    ax4.axvline(actual_months, color='orange', linestyle='--', linewidth=2, alpha=0.8, label='Data Date')
-                    
-                    ax4.set_xlabel('Time (Months)')
-                    ax4.set_ylabel(f'Value ({controls["currency_symbol"]})')
-                    ax4.set_title('EVM Performance Curves', fontweight='bold', fontsize=14)
-                    ax4.legend(loc='upper left')
-                    ax4.grid(True, alpha=0.3)
-                    ax4.set_xlim(0, total_months * 1.1)
+                    ax3.axvline(actual_months, color='orange', linestyle='--', linewidth=2, label='Data Date')
+                    ax3.set_xlabel('Time (Months)'); ax3.set_ylabel(f'Value ({controls["currency_symbol"]})')
+                    ax3.set_title('EVM Performance Curves', fontweight='bold', fontsize=14)
+                    ax3.legend(); ax3.grid(True)
                     
                     plt.tight_layout()
-                    st.pyplot(fig, width='stretch')
-                    
+                    st.pyplot(fig, use_container_width=True)
                 except Exception as e:
                     st.error(f"Chart generation failed: {e}")
-                    st.info("Charts require matplotlib. Ensure it's properly installed.")
         
         except Exception as e:
             st.error(f"EVM calculation failed: {e}")
@@ -3549,13 +3186,6 @@ def load_csv_file(uploaded_file) -> tuple[pd.DataFrame, str]:
             try:
                 uploaded_file.seek(0)
                 df = pd.read_csv(uploaded_file, encoding=encoding)
-
-                # Clean up unnamed columns (like index columns from exported CSVs)
-                unnamed_cols = [col for col in df.columns if col.startswith('Unnamed:')]
-                if unnamed_cols:
-                    df = df.drop(columns=unnamed_cols)
-                    logger.info(f"Removed unnamed columns: {unnamed_cols}")
-
                 if not df.empty:
                     logger.info(f"Loaded CSV with {encoding}: {len(df)} rows.")
                     return df, filename
